@@ -6,6 +6,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
+        "pydicom",
     ],
     author="kmchord9",
     description="A Python library to read .ctvbx high-performance CT volume files.",

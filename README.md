@@ -21,4 +21,7 @@ print(f"Is Signed: {info.is_signed}")
 # Display a slice (Axial)
 plt.imshow(data[info.depth // 2, :, :], cmap='gray')
 plt.show()
+
+# Export to DICOM for verification
+info.export_dicom("exported_dicom", patient_name="Test Patient")
 ```
