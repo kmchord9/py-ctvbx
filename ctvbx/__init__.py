@@ -1,4 +1,3 @@
-from .reader import CtvbxReader, load_ctvbx
+from .reader import CtvbxReader, CtvbxVolume, load_volume
 
-__version__ = "0.1.0"
-__all__ = ["CtvbxReader", "load_ctvbx"]
+__all__ = ['CtvbxReader', 'CtvbxVolume', 'load_volume']

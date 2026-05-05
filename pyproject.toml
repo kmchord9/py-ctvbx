@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-ctvbx"
+version = "0.4.0"
+authors = [
+  { name="kmchord9" },
+]
+description = "A lightweight Python library to read and export .ctvbx high-performance CT volume files."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "numpy>=1.20.0",
+    "pydicom>=2.3.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/kmchord9/py-ctvbx"
+"Bug Tracker" = "https://github.com/kmchord9/py-ctvbx/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ctvbx*"]
