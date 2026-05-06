@@ -124,56 +124,108 @@ class CtvbxVolume:
 
 class CtvbxReader:
     def load(self, file_path):
-        """Loads a .ctvbx file and returns a CtvbxVolume object."""
+        """Loads a .ctvbx file (supports v1.x and v2.0) and returns a CtvbxVolume object."""
         with open(file_path, 'rb') as f:
-            # 1. Magic (6 bytes "CTVIEW")
-            magic_bytes = f.read(6)
-            magic = magic_bytes.decode('utf-8')
-            if magic != "CTVIEW":
-                raise ValueError(f"Invalid format signature: {magic}")
-
-            # 2. Version (int32)
-            version = struct.unpack('<i', f.read(4))[0]
-
-            # 3. Dimensions & Geometry
-            width = struct.unpack('<i', f.read(4))[0]
-            height = struct.unpack('<i', f.read(4))[0]
-            depth = struct.unpack('<i', f.read(4))[0]
-            voxel_size = struct.unpack('<d', f.read(8))[0]
+            # 1. Peek for Version 2.0 signature (8 bytes)
+            sig_bytes = f.read(8)
+            if sig_bytes.startswith(b"CTVBX2.0"):
+                return self._load_v2(f, file_path)
             
-            # 4. IsSigned
-            is_signed = struct.unpack('?', f.read(1))[0]
+            # Fallback to v1.x logic
+            f.seek(0)
+            return self._load_v1(f)
 
-            # 5. ZPositions (v4+)
-            z_positions = []
-            if version >= 4:
-                z_len = struct.unpack('<i', f.read(4))[0]
-                if z_len > 0:
-                    z_positions = list(struct.unpack(f'<{z_len}d', f.read(z_len * 8)))
-            
-            if not z_positions:
-                z_positions = [i * voxel_size for i in range(depth)]
+    def _load_v2(self, f, file_path):
+        """Internal loader for CTVBX v2.0 format."""
+        # Index area is already at offset 8 after reading signature
+        json_offset = struct.unpack('<q', f.read(8))[0]
+        json_len = struct.unpack('<q', f.read(8))[0]
+        binary_offset = struct.unpack('<q', f.read(8))[0]
+        binary_len = struct.unpack('<q', f.read(8))[0]
 
-            # 6. JSON Header (int32 length + bytes)
-            json_len = struct.unpack('<i', f.read(4))[0]
-            json_bytes = f.read(json_len)
-            project_data = json.loads(json_bytes.decode('utf-8'))
+        # Load Metadata
+        f.seek(json_offset)
+        json_bytes = f.read(json_len)
+        project_data = json.loads(json_bytes.decode('utf-8'))
 
-            # 7. Raw Data (16-bit)
-            total_voxels = width * height * depth
-            dtype = np.int16 if is_signed else np.uint16
-            
-            data = np.fromfile(f, dtype=dtype, count=total_voxels)
-            data = data.reshape((depth, height, width))
-            
-            header = {
-                'width': width, 'height': height, 'depth': depth,
-                'voxel_size': voxel_size, 'is_signed': is_signed,
-                'z_positions': z_positions, 'project_data': project_data,
-                'version': version
-            }
-            
-            return CtvbxVolume(data, header)
+        # Extract dimensions from metadata
+        width = project_data.get('VolumeWidth', 0)
+        height = project_data.get('VolumeHeight', 0)
+        depth = project_data.get('VolumeDepth', 0)
+        voxel_size = project_data.get('VoxelSize', 1.0)
+        is_signed = project_data.get('IsSigned', False)
+        z_positions = project_data.get('ZPositions', [])
+
+        if not z_positions:
+            z_positions = [i * voxel_size for i in range(depth)]
+
+        # Load Binary Data
+        f.seek(binary_offset)
+        total_voxels = width * height * depth
+        dtype = np.int16 if is_signed else np.uint16
+        
+        # Optimized: read exact amount
+        data = np.fromfile(f, dtype=dtype, count=total_voxels)
+        data = data.reshape((depth, height, width))
+
+        header = {
+            'width': width, 'height': height, 'depth': depth,
+            'voxel_size': voxel_size, 'is_signed': is_signed,
+            'z_positions': z_positions, 'project_data': project_data,
+            'version': 2.0
+        }
+        return CtvbxVolume(data, header)
+
+    def _load_v1(self, f):
+        """Internal loader for legacy CTVBX formats."""
+        # 1. Magic (6 bytes "CTVIEW")
+        magic_bytes = f.read(6)
+        magic = magic_bytes.decode('utf-8')
+        if magic != "CTVIEW":
+            raise ValueError(f"Invalid format signature: {magic}")
+
+        # 2. Version (int32)
+        version = struct.unpack('<i', f.read(4))[0]
+
+        # 3. Dimensions & Geometry
+        width = struct.unpack('<i', f.read(4))[0]
+        height = struct.unpack('<i', f.read(4))[0]
+        depth = struct.unpack('<i', f.read(4))[0]
+        voxel_size = struct.unpack('<d', f.read(8))[0]
+        
+        # 4. IsSigned
+        is_signed = struct.unpack('?', f.read(1))[0]
+
+        # 5. ZPositions (v4+)
+        z_positions = []
+        if version >= 4:
+            z_len = struct.unpack('<i', f.read(4))[0]
+            if z_len > 0:
+                z_positions = list(struct.unpack(f'<{z_len}d', f.read(z_len * 8)))
+        
+        if not z_positions:
+            z_positions = [i * voxel_size for i in range(depth)]
+
+        # 6. JSON Header (int32 length + bytes)
+        json_len = struct.unpack('<i', f.read(4))[0]
+        json_bytes = f.read(json_len)
+        project_data = json.loads(json_bytes.decode('utf-8'))
+
+        # 7. Raw Data (16-bit)
+        total_voxels = width * height * depth
+        dtype = np.int16 if is_signed else np.uint16
+        
+        data = np.fromfile(f, dtype=dtype, count=total_voxels)
+        data = data.reshape((depth, height, width))
+        
+        header = {
+            'width': width, 'height': height, 'depth': depth,
+            'voxel_size': voxel_size, 'is_signed': is_signed,
+            'z_positions': z_positions, 'project_data': project_data,
+            'version': version
+        }
+        
+        return CtvbxVolume(data, header)
 
 def load_volume(file_path):
     """Utility function to load a volume."""
